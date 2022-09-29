@@ -16,13 +16,14 @@ float roll, pitch, yaw;
 float AccErrorX, AccErrorY, GyroErrorX, GyroErrorY, GyroErrorZ;
 float elapsedTime, currentTime, previousTime;
 int c = 0;
+int alt_angle;
 
 float zeroed_roll;
 float zeroed_pitch;
 float zeroed_yaw;
 
 float target_angle;
-float user_angle = 0;
+int user_angle = 90;
 float angle_offset = 0;
 
 const int SERVO_PIN = 6;
@@ -89,38 +90,63 @@ void loop() {  //0x68
   roll = 0.96 * gyroAngleX + 0.04 * accAngleX;
   pitch = 0.96 * gyroAngleY + 0.04 * accAngleY;
 
-  // Print the values on the serial monitor
-  Serial.print(roll);
-  Serial.print("/");
-  Serial.print(pitch);
-  Serial.print("/");
-  Serial.println(yaw);
+  
 
-  if(Serial.read() == 'g') {
-    if(yaw < 90) {
-      angle_offset = 90.0 - yaw;
+  // roll += (millis() / 1000.0);
+  // pitch += (millis() / 10000.0);
+  // yaw -= (millis() / 5000.0);
+
+  // Print the values on the serial monitor
+  // Serial.print(roll);
+  // Serial.print("/");
+  // Serial.print(pitch);
+  // Serial.print("/");
+  // Serial.println(yaw);
+  // Serial.println(String(AccY) + "  " + String(AccX));
+  alt_angle = map((AccY * 100), -100, 100, 180, 0);
+
+  if(Serial.peek() == 'z') {
+    if(alt_angle < 90) {
+      angle_offset = 90.0 - alt_angle;
     } else {
-      angle_offset = (-1.0 * yaw) + 90;
+      angle_offset = (-1.0 * alt_angle) + 90;
     }
   }
+  int peek = Serial.peek();
+  int last;
+  if(Serial.available() && (peek != 0 && peek != 255 && peek != 10)){
+    last = user_angle;
+    user_angle = Serial.parseInt();
+
+    user_angle = (user_angle == 0) ? last : user_angle;
+    lcd.clear();
+    Serial.println(String(user_angle));
+
+  }
 
   
-  int target_angle = yaw;
+  int target_angle = alt_angle;
   target_angle += angle_offset;
-  target_angle = (target_angle > 135) ? 135 : (target_angle < 45) ? 45 : target_angle;
-  if(target_angle > 90) {
-    target_angle -= (target_angle - 90.0) * 2;
+  target_angle = (target_angle > 185) ? 185 : (target_angle < 25) ? 25 : target_angle;
+  if(target_angle > user_angle) {
+    target_angle -= (target_angle - user_angle) * 2;
   } else {
-    target_angle += (90.0 - target_angle) * 2;
+    target_angle += (user_angle - target_angle) * 2;
   }
-  
+  target_angle = (target_angle > 185) ? 185 : (target_angle < 25) ? 25 : target_angle;
+
   lcd.setCursor(0, 0);
   lcd.print(String(target_angle) + " " + angle_offset);
   lcd.setCursor(8, 0);
   lcd.print(user_angle);
   lcd.setCursor(0, 1);
-  lcd.print("p:" + String(pitch) + " y:" + String(yaw));
-
-  servo.write(target_angle);
+  lcd.print("p:" + String(pitch) + " y:" + String(alt_angle));
+  if(target_angle > 90) {
+    servo.write(target_angle - 20);
+  } else {
+    servo.write(target_angle);
+  }
+  Serial.read(); // Clear for next char
   delay(10);
+
 }
