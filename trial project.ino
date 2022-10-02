@@ -22,6 +22,12 @@ float zeroed_roll;
 float zeroed_pitch;
 float zeroed_yaw;
 
+float z_accum = 0;
+
+float z_tracker[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+unsigned long count = 0;
+float z_avg;
+
 float target_angle;
 int user_angle = 90;
 float angle_offset = 0;
@@ -51,6 +57,7 @@ void setup() {
 // 100 and 550 are approx. vertical     - 0, 180
 
 void loop() {  //0x68
+  count++;
   lcd.clear();
   // int pot_value = analogRead(A0);
   int clock_value = analogRead(A5);
@@ -81,8 +88,40 @@ void loop() {  //0x68
   // Correct the outputs with the calculated error values
   GyroX = GyroX + 0.56;  // GyroErrorX ~(-0.56)
   GyroY = GyroY - 2;     // GyroErrorY ~(2)
-  GyroZ = GyroZ + 0.79;  // GyroErrorZ ~ (-0.8)
+  
+  /*
+  //calc avg z val
+  z_accum += GyroZ;
+  count++;
+  z_avg = z_accum / count;
+  */
+
+  if(abs(GyroZ) > 100.0) {
+    z_tracker[0] = z_tracker[1];
+
+  } else {
+    z_tracker[0] = GyroZ;
+
+  }
+  for(int i = sizeof(z_tracker) - 1; i > 0; i--) {
+    z_tracker[i] = z_tracker[i - 1];
+  }
+
+  z_accum = 0;
+  for(int i = 0; i < sizeof(z_tracker); i++) {
+    z_accum += z_tracker[i];
+    // Serial.println(z_tracker[i]);
+  }
+  Serial.println();
+  for(int i = 0; i < sizeof(z_tracker); i++) {
+    
+    Serial.print(String(z_tracker[i]) + ", ");
+  }
+  z_avg = z_accum / sizeof(z_tracker);
+
+  // GyroZ = GyroZ + 0.79;  // GyroErrorZ ~ (-0.8)
   // Currently the raw values are in degrees per seconds, deg/s, so we need to multiply by sendonds (s) to get the angle in degrees
+  // Serial.println(z_avg);
   gyroAngleX = gyroAngleX + GyroX * elapsedTime;  // deg/s * s = deg
   gyroAngleY = gyroAngleY + GyroY * elapsedTime;
   yaw = yaw + GyroZ * elapsedTime;
@@ -120,7 +159,7 @@ void loop() {  //0x68
 
     user_angle = (user_angle == 0) ? last : user_angle;
     lcd.clear();
-    Serial.println(String(user_angle));
+    // Serial.println(String(user_angle));
 
   }
 
@@ -147,6 +186,6 @@ void loop() {  //0x68
     servo.write(target_angle);
   }
   Serial.read(); // Clear for next char
-  delay(10);
+  delay(100);
 
 }
