@@ -75,6 +75,7 @@ void loop() {  //0x68
   servo.write(target_angle - SERVO_OFFSET);
 }
 
+// Update the LCD to have angle information printed onto it
 void UpdateLCD() {
   lcd.setCursor(0, 0);
   lcd.print(String(target_angle) + " " + angle_offset);
@@ -84,6 +85,7 @@ void UpdateLCD() {
   lcd.print("p:" + String(pitch) + " y:" + String(yaw));
 }
 
+// Communicate with the MPU6050 via I2C to read its acceleration and angle values
 void ProcessGyro() {
   Wire.beginTransmission(MPU);
   Wire.write(0x3B);  // Start with register 0x3B (ACCEL_XOUT_H)
@@ -129,42 +131,50 @@ void ProcessGyro() {
   Serial.println("x: " + String(roll) + " \ty: " + String(pitch) + " \tz: " + String(yaw));
 }
 
+// Use the yaw value from the Gyro to calculate the desired angle
 void CalculateAngle() {
+  // Add an offset to the raw yaw value to have initial value equal 90
   target_angle = (yaw + angle_offset);
   
   CheckAngle();
 
+  // If the desired angle is less than 90 add the difference between the desired angle and 90
+  // Otherwise subtract the differnece between 90 and the desired angle
   if(user_angle < 90) {
     target_angle += (90 - user_angle);
   } else {
     target_angle -= (user_angle - 90);
   }
 
+  // Reverse the target angle for the servo
   target_angle = 90 + (90 - target_angle);
   
   CheckAngle();
 }
 
+// Prevents the target angle from reaching too high of a value
 void CheckAngle() {
   target_angle = (target_angle > 185) ? 185 : (target_angle < 25) ? 25
                                                                   : target_angle;
 }
 
+// Helper method for Serial Monitor input
 void ProcessInput() {
   RecieveWithEndMarker();
   SetAngle();
   ZeroSensors();
 }
 
+// Reads the input from the Serial monitor
 void RecieveWithEndMarker() {
     static byte ndx = 0;
-    char endMarker = '\n';
+    char end_marker = '\n';
     char rc;
     
     if (Serial.available() > 0) {
         rc = Serial.read();
 
-        if (rc != endMarker) {
+        if (rc != end_marker) {
             recieved_chars[ndx] = rc;
             ndx++;
             if (ndx >= num_chars) {
@@ -179,6 +189,7 @@ void RecieveWithEndMarker() {
     }
 }
 
+// Set angle if input is available and not the letter z
 void SetAngle() {
   if(new_data && recieved_chars[0] != 'z') {
     user_angle = 0;
@@ -188,6 +199,7 @@ void SetAngle() {
   }
 }
 
+// Set angle offsets if input is availble and is the letter z
 void ZeroSensors() {
   if(new_data && recieved_chars[0] == 'z') {
     if (alt_angle < 90) {
