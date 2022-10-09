@@ -8,6 +8,13 @@ Servo servo;
 const int regSelect = 12, enable = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
 LiquidCrystal lcd(regSelect, enable, d4, d5, d6, d7);
 
+const byte numChars = 32;
+char receivedChars[numChars];   // an array to store the received data
+
+boolean newData = false;
+
+int dataNumber = 0;             // new for this version
+
 const int MPU = 0x68;  // MPU6050 I2C address
 float AccX, AccY, AccZ;
 float GyroX, GyroY, GyroZ;
@@ -40,7 +47,7 @@ const float modifier = 9.0 / 32.0;
 const int INTERRUPT_PIN = 7;
 
 void setup() {
-  Serial.begin(19200);
+  Serial.begin(9600);
   Wire.begin();                 // Initialize comunication
   Wire.beginTransmission(MPU);  // Start communication with MPU6050 // MPU=0x68
   Wire.write(0x6B);             // Talk to the register 6B
@@ -60,11 +67,8 @@ void setup() {
 // 100 and 550 are approx. vertical     - 0, 180
 
 void loop() {  //0x68
-  count++;
   lcd.clear();
-  // int pot_value = analogRead(A0);
-  int clock_value = analogRead(A5);
-  int data_value = analogRead(A4);
+  ProcessInput();
   // === Read acceleromter data === //
   Wire.beginTransmission(MPU);
   Wire.write(0x3B);  // Start with register 0x3B (ACCEL_XOUT_H)
@@ -90,8 +94,8 @@ void loop() {  //0x68
   GyroZ = (Wire.read() << 8 | Wire.read()) / 131.0;
   // Correct the outputs with the calculated error values
   GyroX = GyroX + 0.56;  // GyroErrorX ~(-0.56)
-  GyroY = GyroY - 2;     // GyroErrorY ~(2)
-  GyroZ -= .452;
+  GyroY -= 1.45;
+  GyroZ -= .470;
 
   /*
   //calc avg z val
@@ -125,8 +129,11 @@ void loop() {  //0x68
   // Serial.println(yaw);
   // Serial.println(String(AccY) + "  " + String(AccX));
   alt_angle = map((AccY * 100), -100, 100, 180, 0);
-
+  /*
   if (Serial.peek() == 'z') {
+    while(Serial.available() > 0) {
+      Serial.read();
+    }
     if (alt_angle < 90) {
       angle_offset_alt = 90.0 - alt_angle;
     } else {
@@ -144,37 +151,115 @@ void loop() {  //0x68
   int last;
   if (Serial.available() && (peek != 0 && peek != 255 && peek != 10)) {
     last = user_angle;
-    user_angle = Serial.parseInt();
+    user_angle = Serial.parseInt(SKIP_WHITESPACE);
+    // user_angle = Serial.parseInt();
 
     user_angle = (user_angle == 0) ? last : user_angle;
     lcd.clear();
     Serial.println(String(peek) + " " + String(user_angle));
   }
+  */
 
-
-  int target_angle = ((alt_angle + angle_offset_alt) + (yaw + angle_offset)) / 2.0;
+  // int target_angle = ((alt_angle + angle_offset_alt) + (yaw + angle_offset)) / 2.0;
+  int target_angle = (yaw + angle_offset);
+  
   target_angle = (target_angle > 185) ? 185 : (target_angle < 25) ? 25
                                                                   : target_angle;
-  if (target_angle > user_angle) {
-    target_angle -= (target_angle - user_angle) * 2;
+
+  if(user_angle < 90) {
+    target_angle += (90 - user_angle);
   } else {
-    target_angle += (user_angle - target_angle) * 2;
+    target_angle -= (user_angle - 90);
   }
+
+  // if (target_angle > user_angle) {
+  //   target_angle -= (target_angle - user_angle);
+  // } else {
+  //   target_angle += (user_angle - target_angle);
+  // }
+  // target_angle -= (90.0 - user_angle);
+  target_angle = 90 + (90 - target_angle);
   target_angle = (target_angle > 185) ? 185 : (target_angle < 25) ? 25
                                                                   : target_angle;
 
   lcd.setCursor(0, 0);
-  lcd.print(String(target_angle) + " " + angle_offset_alt);
-  lcd.setCursor(8, 0);
+  lcd.print(String(target_angle) + " " + angle_offset);
+  lcd.setCursor(12, 0);
   lcd.print(user_angle);
   lcd.setCursor(0, 1);
-  lcd.print("p:" + String(pitch) + " y:" + String(alt_angle));
+  lcd.print("p:" + String(pitch) + " y:" + String(yaw));
   // servo.write(90);
-  if (target_angle > 90) {
-    servo.write((target_angle)-20);
-  } else {
-    servo.write(target_angle);
-  }
+  // if (target_angle > 90) {
+    servo.write((target_angle)-15);
+  // } else {
+    // servo.write(target_angle);
+  // }
+  // Serial.read();  // Clear for next char
+}
 
-  Serial.read();  // Clear for next char
+void ProcessInput() {
+  recvWithEndMarker();
+  SetAngle();
+  ZeroSensors();
+}
+
+void recvWithEndMarker() {
+    static byte ndx = 0;
+    char endMarker = '\n';
+    char rc;
+    
+    if (Serial.available() > 0) {
+        rc = Serial.read();
+
+        if (rc != endMarker) {
+            receivedChars[ndx] = rc;
+            ndx++;
+            if (ndx >= numChars) {
+                ndx = numChars - 1;
+            }
+        }
+        else {
+            receivedChars[ndx] = '\0'; // terminate the string
+            ndx = 0;
+            newData = true;
+        }
+    }
+}
+
+void SetAngle() {
+  if(newData && receivedChars[0] != 'z') {
+    user_angle = 0;
+    user_angle = atoi(receivedChars);
+    Serial.println("New angle: " + String(receivedChars));
+    newData = false;
+  }
+}
+
+void ZeroSensors() {
+  if(newData && receivedChars[0] == 'z') {
+    if (alt_angle < 90) {
+      angle_offset_alt = 90.0 - alt_angle;
+    } else {
+      angle_offset_alt = (-1.0 * alt_angle) + 90;
+    }
+    if (yaw < 90) {
+      angle_offset = 90.0 - yaw;
+    } else {
+      angle_offset = (-1.0 * yaw) + 90;
+    }
+    Serial.println(String(angle_offset) + ", " + String(angle_offset_alt) + " Zeroed");
+    newData = false;
+  }
+}
+
+void showNewNumber() {
+    if (newData == true) {
+        dataNumber = 0;             // new for this version
+        dataNumber = atoi(receivedChars);   // new for this version
+        Serial.print("This just in ... ");
+        Serial.println(receivedChars);
+        Serial.print("Data as Number ... ");    // new for this version
+        Serial.println(dataNumber);     // new for this version
+        // newData = false;
+    }
 }
